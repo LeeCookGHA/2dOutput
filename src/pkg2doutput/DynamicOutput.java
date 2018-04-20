@@ -1,40 +1,24 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package pkg2doutput;
 
-import java.awt.BorderLayout;
-import java.awt.Canvas;
 import java.awt.Color;
 import java.awt.Dimension;
-import java.awt.Graphics;
-import java.awt.image.BufferStrategy;
-import java.awt.image.BufferedImage;
-import java.awt.image.DataBufferInt;
+import java.awt.event.MouseListener;
+import java.awt.event.MouseEvent;
+import javax.swing.*;
 
-import javax.swing.JFrame;
+public class DynamicOutput extends JPanel
+        implements MouseListener {
+    int dummy = 0;
+    CanvasArea canvasArea;
+    static final String NEWLINE = System.getProperty("line.separator");
 
-public class DynamicOutput extends Canvas implements Runnable{
     // Graphics variables
     private JFrame frame;
+    static final int GRAPHICS_WIDTH = 2001;
+    static final int GRAPHICS_HEIGHT = 2001;
     private static final long serialVersionUID = 1L;
-    public static final int WIDTH = 2001;
-    public static final int HEIGHT = WIDTH; // / 12 * 9;
-    public static final int SCALE = 1;
-    public static final String NAME = "DynamicOutput";
-    public boolean running = false;
-    public int tickCount = 0;
-    private BufferedImage image = new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_RGB);
-    private int[] pixels = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
-
-    // Chart Axis boundaries
-    final static double CHART_SIZE = 0.1d;
-    double chartHorMin = -1d * CHART_SIZE;
-    double chartHorMax =  CHART_SIZE;
-    double chartVirMin = -1d * CHART_SIZE;
-    double chartVirMax =  CHART_SIZE;
+    public static boolean frameInitialised = false;
+    public boolean appInitialised = false;
 
     // Photo Diode Info
     final static double maxAoI = 90d;
@@ -86,8 +70,8 @@ public class DynamicOutput extends Canvas implements Runnable{
     Spherical3 visibleMeasurementsCentroid = new Spherical3();
     Vector2 centroidDelta = new Vector2();
 
-
-
+    
+    
     private void initialiseClassVariables() {
         for (int count = 0; count < CLUSTER_SIZE; count++) {
             clusterSensorEstimatedPositions[count] = new Vector3();
@@ -478,85 +462,9 @@ public class DynamicOutput extends Canvas implements Runnable{
     }
 
 
-    public void tick(){
-        tickCount++;
-        for (int i = 0; i < pixels.length; i++){
-            pixels[i] = i + tickCount;
-        }
-    }
-	
-    private void circleAt(Graphics g, double x, double y, Color color, int radius){
-        // double chartHorMin = -1d*chartScale + chartHorOffset;
-        // double chartHorMax =  1d*chartScale + chartHorOffset;
-        // double chartVirMin = -1d*chartScale + chartVirOffset;
-        // double chartVirMax =  1d*chartScale + chartVirOffset;
-        double x_value = ((x - chartHorMin)/(chartHorMax-chartHorMin))*(double)getWidth();
-        double y_value = ((y - chartVirMin)/(chartVirMax-chartVirMin))*(double)getHeight();
-        g.setColor(color);
-        g.fillOval((int)x_value-radius, (int)y_value-radius, (radius*2)+1, (radius*2)+1);
-    }
-        
-    private void lineBetween(Graphics g, double xStart, double yStart, double xEnd, double yEnd, Color color) {
-        // double chartHorMin = -1d*chartScale + chartHorOffset;
-        // double chartHorMax =  1d*chartScale + chartHorOffset;
-        // double chartVirMin = -1d*chartScale + chartVirOffset;
-        // double chartVirMax =  1d*chartScale + chartVirOffset;
-        double xStart_value = ((xStart - chartHorMin)/(chartHorMax-chartHorMin))*(double)getWidth();
-        double yStart_value = ((yStart - chartVirMin)/(chartVirMax-chartVirMin))*(double)getHeight();
-        double xEnd_value = ((xEnd - chartHorMin)/(chartHorMax-chartHorMin))*(double)getWidth();
-        double yEnd_value = ((yEnd - chartVirMin)/(chartVirMax-chartVirMin))*(double)getHeight();
-        g.setColor(color);
-        g.drawLine((int)xStart_value, (int)yStart_value, (int)xEnd_value, (int)yEnd_value);
-    }
-        
-    public void render(){
-        BufferStrategy bs = getBufferStrategy();
-        if (bs == null){
-            createBufferStrategy(3);
-            return;
-        }
-		
-        Graphics g = bs.getDrawGraphics();
-        g.setColor(Color.BLACK);
-        g.fillRect(0, 0, getWidth(), getHeight());
-        
-        centroidDelta.set(visibleMeasurementsCentroid.az, visibleMeasurementsCentroid.el).sub(visibleEstimatesCentroid.az, visibleEstimatesCentroid.el);
 
-        // Fill in the estimated and actual bearings to the cluster center
-        circleAt(g, Math.toDegrees(clusterToBase1Spherical.az), Math.toDegrees(clusterToBase1Spherical.el), Color.BLUE, 4);
-        circleAt(g, Math.toDegrees(visibleMeasurementsCentroid.az), Math.toDegrees(visibleMeasurementsCentroid.el), Color.CYAN, 4);
-
-        circleAt(g, Math.toDegrees(perspectivePointsCentroid.az), Math.toDegrees(perspectivePointsCentroid.el), Color.MAGENTA, 4);
-        
-        circleAt(g, Math.toDegrees(bearingEstimateFromIcoSphere.az+centroidDelta.x), Math.toDegrees(bearingEstimateFromIcoSphere.el+centroidDelta.y), Color.RED, 4);
-        circleAt(g, Math.toDegrees(visibleEstimatesCentroid.az+centroidDelta.x), Math.toDegrees(visibleEstimatesCentroid.el+centroidDelta.y), Color.PINK, 4);
-        
-        
-        
-        // Output actual sensor angles
-        for (int count = 0; count < CLUSTER_SIZE; count++) {
-            if (base1ToSensorVisible[count]) {
-                circleAt(g, Math.toDegrees(base1ToSensorSpherical[count].az), Math.toDegrees(base1ToSensorSpherical[count].el), Color.WHITE, 4);
-                circleAt(g, Math.toDegrees(clusterSensorEstimateSpherical[count].az+centroidDelta.x), Math.toDegrees(clusterSensorEstimateSpherical[count].el+centroidDelta.y), Color.YELLOW, 4);
-                if (perspectivePointsFromEstimate[count].r > 0.5d) {
-                    circleAt(g, Math.toDegrees(perspectivePointsFromEstimate[count].az), Math.toDegrees(perspectivePointsFromEstimate[count].el), Color.GREEN, 4);
-                    lineBetween(g, Math.toDegrees(base1ToSensorSpherical[count].az), Math.toDegrees(base1ToSensorSpherical[count].el), Math.toDegrees(perspectivePointsFromEstimate[count].az), Math.toDegrees(perspectivePointsFromEstimate[count].el), Color.WHITE);
-                }
-            }
-        }
-//        g.drawImage(image, 0, 0, getWidth(), getHeight(), null);
-        g.dispose();
-        bs.show();
-    }
-	
-    public void run() {		
-        long lastTime = System.nanoTime();
-        double nsPerTick = 1000000000D/60D;
-        int frames = 0;
-        int ticks = 0;
-        long lastTimer = System.currentTimeMillis();
-        double delta = 0;
-
+    
+    private void runApplication() {
         initialiseClassVariables();
         getLitSensorAngles();
         getInitialBearingFromIcoSphere();
@@ -564,67 +472,129 @@ public class DynamicOutput extends Canvas implements Runnable{
         getEstimatedSensorAngles();
         getEstimated2dAngles();
         getLivePerspectivePoints();
+        canvasArea.rescaleWindow(0.2d);
         System.out.printf("\n\r\n\rDONE.\n\r ");
-                
-        while (running){
-            long now = System.nanoTime();
-            delta += (now - lastTime) / nsPerTick;
-            lastTime = now;
-            boolean shouldRender = true;
-            while(delta >= 1) {
-                ticks++;
-		tick();
-		delta -= 1;
-		shouldRender = true;
+    }
+
+
+    public static void main(String[] args) {
+        try {
+            UIManager.setLookAndFeel("com.sun.java.swing.plaf.windows.WindowsLookAndFeel");
+        } catch (UnsupportedLookAndFeelException ex) {
+            ex.printStackTrace();
+        } catch (IllegalAccessException ex) {
+            ex.printStackTrace();
+        } catch (InstantiationException ex) {
+            ex.printStackTrace();
+        } catch (ClassNotFoundException ex) {
+            ex.printStackTrace();
+        }
+
+        //Schedule a job for the event dispatch thread:
+        //creating and showing this application's GUI.
+        javax.swing.SwingUtilities.invokeLater(new Runnable() {
+            public void run() {
+                createAndShowGUI();
             }
-            try {
-                Thread.sleep(2);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-			
-            if (shouldRender) {
-                frames++;
-                render();
-            }
-			
-            if(System.currentTimeMillis() - lastTimer >= 1000){
-                lastTimer += 1000;
-                frames = 0;
-                ticks = 0;
+        });
+
+    }
+
+    private static void createAndShowGUI() {
+        //Create and set up the window.
+        JFrame frame = new JFrame("DynamicOutput");
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        
+        //Create and set up the content pane.
+        JComponent newContentPane = new DynamicOutput();
+        newContentPane.setOpaque(true); //content panes must be opaque
+        frame.setContentPane(newContentPane);
+        
+        //Display the window.
+        frame.pack();
+        frame.setVisible(true);
+        frameInitialised = true;
+    }
+    
+    public DynamicOutput() {
+//        super(new GridLayout(0,1));
+        canvasArea = new CanvasArea(Color.black);
+        canvasArea.minSize.setSize(GRAPHICS_WIDTH, GRAPHICS_HEIGHT);
+        add(canvasArea);
+        
+        //Register for mouse events on canvasArea and the panel.
+        canvasArea.addMouseListener(this);
+        addMouseListener(this);
+
+        setPreferredSize(new Dimension(GRAPHICS_WIDTH, GRAPHICS_HEIGHT));
+    }
+    
+    
+    public void mouseClicked(MouseEvent e) {
+        String buttonString;
+        if (MouseEvent.BUTTON1 == e.getButton()){
+           buttonString = "B1";
+        } else if (MouseEvent.BUTTON2 == e.getButton()){
+           buttonString = "B2";
+        } else if (MouseEvent.BUTTON3 == e.getButton()){
+           buttonString = "B3";
+        } else {
+           buttonString = "Bx";
+        }
+        System.out.append("Mouse " + buttonString + " clicked (# of clicks: " + e.getClickCount() + ")"
+                + " (" + e.getX() + "," + e.getY() + ")"
+                + " (" + canvasArea.getXfromPix(e.getX()) + "," + canvasArea.getYfromPix(e.getY()) + ")"
+                + " detected on "
+                + e.getComponent().getClass().getName()
+                + "\n\r");
+        
+        refreshCanvas();
+        canvasArea.circleAtScaled(canvasArea.getXfromPix(e.getX()), canvasArea.getYfromPix(e.getY()), Color.ORANGE, 5);
+    }
+
+    private void refreshCanvas() {
+        canvasArea.clearWindow();
+        
+        centroidDelta.set(visibleMeasurementsCentroid.az, visibleMeasurementsCentroid.el).sub(visibleEstimatesCentroid.az, visibleEstimatesCentroid.el);
+
+        // Fill in the estimated and actual bearings to the cluster center
+        canvasArea.circleAtScaled(Math.toDegrees(clusterToBase1Spherical.az), Math.toDegrees(clusterToBase1Spherical.el), Color.BLUE, 4);
+        canvasArea.circleAtScaled(Math.toDegrees(visibleMeasurementsCentroid.az), Math.toDegrees(visibleMeasurementsCentroid.el), Color.CYAN, 4);
+
+        canvasArea.circleAtScaled(Math.toDegrees(perspectivePointsCentroid.az), Math.toDegrees(perspectivePointsCentroid.el), Color.MAGENTA, 4);
+
+        canvasArea.circleAtScaled(Math.toDegrees(bearingEstimateFromIcoSphere.az+centroidDelta.x), Math.toDegrees(bearingEstimateFromIcoSphere.el+centroidDelta.y), Color.RED, 4);
+        canvasArea.circleAtScaled(Math.toDegrees(visibleEstimatesCentroid.az+centroidDelta.x), Math.toDegrees(visibleEstimatesCentroid.el+centroidDelta.y), Color.PINK, 4);
+
+        // Output actual sensor angles
+        for (int count = 0; count < CLUSTER_SIZE; count++) {
+            if (base1ToSensorVisible[count]) {
+                canvasArea.circleAtScaled(Math.toDegrees(base1ToSensorSpherical[count].az), Math.toDegrees(base1ToSensorSpherical[count].el), Color.WHITE, 4);
+                canvasArea.circleAtScaled(Math.toDegrees(clusterSensorEstimateSpherical[count].az+centroidDelta.x), Math.toDegrees(clusterSensorEstimateSpherical[count].el+centroidDelta.y), Color.YELLOW, 4);
+                if (perspectivePointsFromEstimate[count].r > 0.5d) {
+                    canvasArea.circleAtScaled(Math.toDegrees(perspectivePointsFromEstimate[count].az), Math.toDegrees(perspectivePointsFromEstimate[count].el), Color.GREEN, 4);
+                    canvasArea.lineBetweenScaled(Math.toDegrees(base1ToSensorSpherical[count].az), Math.toDegrees(base1ToSensorSpherical[count].el), Math.toDegrees(perspectivePointsFromEstimate[count].az), Math.toDegrees(perspectivePointsFromEstimate[count].el), Color.WHITE);
+                }
             }
         }
     }
 
-    public DynamicOutput(){
-        setMinimumSize(new Dimension(WIDTH*SCALE, HEIGHT*SCALE));
-        setMaximumSize(new Dimension(WIDTH*SCALE, HEIGHT*SCALE));
-        setPreferredSize(new Dimension(WIDTH*SCALE, HEIGHT*SCALE));
-		
-        frame = new JFrame(NAME);
-        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setLayout(new BorderLayout());
-        frame.add(this, BorderLayout.CENTER);
-        frame.pack();
-		
-        frame.setResizable(false);
-        frame.setLocationRelativeTo(null);
-        frame.setVisible(true);	
+
+    
+    public void mouseEntered(MouseEvent e) {
+        if ((false == appInitialised)&&frameInitialised) {
+            appInitialised = true;
+            runApplication();
+        }
+        refreshCanvas();
     }
-	
-    public static void main(String[] args){ 
-        new DynamicOutput().start();		
-    }
-	
-    public synchronized void start() {
-        running = true;
-        new Thread(this).start();
-    }
-	
-    public synchronized void stop() {
-        running = false;
-    }
-	
+    
+    // Add these for the listener implementation
+    public void mousePressed(MouseEvent e)  {dummy++;}
+    public void mouseReleased(MouseEvent e)  {dummy++;}
+    public void mouseExited(MouseEvent e) {dummy++;}
+
+
     static double[][] devicePoints = {
         {0.08518143743276596,0.017062144353985786,0.04640356823801994},
         {0.09299874305725098,-9.77110757958144e-05,0.03490303456783295},
