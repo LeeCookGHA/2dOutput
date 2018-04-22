@@ -9,13 +9,13 @@ import java.awt.Graphics;
 public class CanvasArea extends Canvas {
     Dimension minSize = new Dimension(1001, 1001);
     Color backgroundColor = Color.black;
-    double chartScale       =  1d;
-    double chartHorScaleMin = -1d * chartScale;
-    double chartHorScaleMax =  chartScale;
-    double chartVirScaleMin = -1d * chartScale;
-    double chartVirScaleMax =  chartScale;
-    double chartHorCenter =    0d;
-    double chartVirCenter =    0d;
+    private double chartScale       =  1d;
+    private double chartHorScaleMin = -1d * chartScale;
+    private double chartHorScaleMax =  chartScale;
+    private double chartVirScaleMin = -1d * chartScale;
+    private double chartVirScaleMax =  chartScale;
+    private double chartHorCenter =    0d;
+    private double chartVirCenter =    0d;
 
     public void circleAtScaled(double x, double y, Color color, int radius){
         // Invert the Y because the origin is top-left in pixels
@@ -51,7 +51,8 @@ public class CanvasArea extends Canvas {
     
     public void recenterWindow(double xCenter, double yCenter) {
         chartHorCenter = xCenter;
-        chartVirCenter = yCenter;
+        // Invert the Y because the origin is top-left in pixels
+        chartVirCenter = -1d*yCenter;
         calcWindowExtents();
     }
     
