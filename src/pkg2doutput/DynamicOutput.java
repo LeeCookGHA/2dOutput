@@ -19,7 +19,7 @@ public class DynamicOutput extends JPanel
     private static final long serialVersionUID = 1L;
     public static boolean frameInitialised = false;
     public boolean appInitialised = false;
-    private double outputScale = 1d;
+    private double outputScale = 5d;
     Vector2 outputCenter = new Vector2();
 
     // Photo Diode Info
@@ -31,21 +31,13 @@ public class DynamicOutput extends JPanel
     
     // Sensor Cluster Info
     static int CLUSTER_SIZE = 32;
-    Vector3 clusterOriginPosition = new Vector3(0d, 0, 0); // meters
     Vector3[] clusterSensorPositions = new Vector3[CLUSTER_SIZE]; // Meters
     Vector3[] clusterSensorNormalPositions = new Vector3[CLUSTER_SIZE]; // Meters
-    Spherical3 actualBearingFromBase = new Spherical3();
-    
-    // Base1 info
-    Vector3 base1OriginPosition = new Vector3(2.0d,0d,0d); // meters
-    
-    // Base to Sensor relative info
-    Spherical3[] visibleBaseToSensorSpherical = new Spherical3[CLUSTER_SIZE];
-    Vector3[] base1ToSensorVector = new Vector3[CLUSTER_SIZE];
-    double[] base1ToSensorAoI = new double[CLUSTER_SIZE];
-    double[] base1ToSensorRelativePower = new double[CLUSTER_SIZE];
-    int numberOfVisibleSensors = 0;
+    Spherical3[] rawBaseToSensorSpherical = new Spherical3[CLUSTER_SIZE];
+    Spherical3 rawSensorsCentroid = new Spherical3();
+    Spherical3[] zeroedRawBaseToSensorSpherical = new Spherical3[CLUSTER_SIZE];
     boolean[] base1ToSensorVisible = new boolean[CLUSTER_SIZE];
+    int numberOfVisibleSensors = 0;
 
     // General items
     Vector3 zeroVector = new Vector3(0, 0, 0); // meters
@@ -55,35 +47,38 @@ public class DynamicOutput extends JPanel
     //                    EXPOSED POSER VARIABLES
     // =================================================================
     // =================================================================
+    Vector3 vectorEstimate = new Vector3();
+    Vector3 positionEstimate = new Vector3();
+    Spherical3 bearingEstimate = new Spherical3();
+
     final static double icoSphereRadius = 0.5d; // Use to determine bearing estimates
     boolean[] icoSpherePointWithinAoI = new boolean[ICOSPHERE_POINTS];
     final static double sensorMaxFoR = 80d; // Use to determine bearing estimates
-    Vector3 vectorEstimateFromIcoSphere = new Vector3();
-    Vector3 baseEstPosnFromIcoSphere = new Vector3();
-    Spherical3 estimateBearingFromIcoSphere = new Spherical3();
     Vector3[] clusterSensorEstimatedPositions = new Vector3[CLUSTER_SIZE]; // Meters
     Spherical3[] clusterSensorEstimateSpherical = new Spherical3[CLUSTER_SIZE];
+    Spherical3[] zeroedClusterSensorEstimateSpherical = new Spherical3[CLUSTER_SIZE];
     double[] clusterSensorSortedListAngles = new double[CLUSTER_SIZE];
     int[] clusterSensorSortedListSensorId = new int[CLUSTER_SIZE];
     Spherical3[] perspectivePointsFromEstimate = new Spherical3[CLUSTER_SIZE];
     Spherical3 perspectivePointsCentroid = new Spherical3();
     double averageMagnitudeFromPerspectiveCentroid = 0d;
     Spherical3 estimatedSensorsCentroid = new Spherical3();
-    Spherical3 visibleSensorsCentroid = new Spherical3();
     Vector2 centroidDelta = new Vector2();
 
     
     
     private void initialiseClassVariables() {
         for (int count = 0; count < CLUSTER_SIZE; count++) {
-            clusterSensorEstimatedPositions[count] = new Vector3();
-            clusterSensorEstimateSpherical[count] = new Spherical3();
             clusterSensorPositions[count] = new Vector3();
             clusterSensorNormalPositions[count] = new Vector3();
-            visibleBaseToSensorSpherical[count] = new Spherical3();
-            base1ToSensorVector[count] = new Vector3();
+
+            rawBaseToSensorSpherical[count] = new Spherical3();
+            zeroedRawBaseToSensorSpherical[count] = new Spherical3();
+
             clusterSensorEstimatedPositions[count] = new Vector3();
             clusterSensorEstimateSpherical[count] = new Spherical3();
+            zeroedClusterSensorEstimateSpherical[count] = new Spherical3();
+
             perspectivePointsFromEstimate[count] = new Spherical3();
         }
     }
@@ -106,7 +101,7 @@ public class DynamicOutput extends JPanel
         Spherical3 tempIcoSphereSpherical = new Spherical3();
         
         // Create the estaimted position vectors
-        vectorEstimateFromIcoSphere.set(0, 0, 0);
+        vectorEstimate.set(0, 0, 0);
 
         for (int spCount = 0; spCount < ICOSPHERE_POINTS; spCount++) {
             icoSpherePointWithinAoI[spCount] = true;
@@ -128,20 +123,17 @@ public class DynamicOutput extends JPanel
         for (int spCount = 0; spCount < ICOSPHERE_POINTS; spCount++) {
             if (icoSpherePointWithinAoI[spCount]) {
                 tempIcoSphereVector.set(icoSphereCoords[spCount][0], icoSphereCoords[spCount][1], icoSphereCoords[spCount][2]);
-                vectorEstimateFromIcoSphere.add(tempIcoSphereVector);
+                vectorEstimate.add(tempIcoSphereVector);
                 tempCount++;
                 System.out.printf("   %d", spCount);
             }
         }
         
-        System.out.printf("\n\r   AVG Vector(%d): (%2.8fm, %2.8fm, %2.8fm)", tempCount, vectorEstimateFromIcoSphere.x, vectorEstimateFromIcoSphere.y, vectorEstimateFromIcoSphere.z);
-        vectorEstimateFromIcoSphere.x /= tempCount;
-        vectorEstimateFromIcoSphere.y /= tempCount;
-        vectorEstimateFromIcoSphere.z /= tempCount;
-        System.out.printf("\n\r   AVG Vector(1): (%2.8fm, %2.8fm, %2.8fm)", vectorEstimateFromIcoSphere.x, vectorEstimateFromIcoSphere.y, vectorEstimateFromIcoSphere.z);
-        baseEstPosnFromIcoSphere.set(clusterOriginPosition);
-        baseEstPosnFromIcoSphere.sub(vectorEstimateFromIcoSphere);
-        System.out.printf("\n\r   Base Est: (%2.8fm, %2.8fm, %2.8fm)", baseEstPosnFromIcoSphere.x, baseEstPosnFromIcoSphere.y, baseEstPosnFromIcoSphere.z);
+        vectorEstimate.x /= tempCount;
+        vectorEstimate.y /= tempCount;
+        vectorEstimate.z /= tempCount;
+        positionEstimate.set(0d, 0d, 0d);
+        positionEstimate.sub(vectorEstimate);
     }
 
     // Get the estimated range from the initial bearing and 
@@ -155,35 +147,34 @@ public class DynamicOutput extends JPanel
         int heldInner = 1;
         Vector3 estimateOffset = new Vector3();
 
-        // 
         for (int outerCount = 0; outerCount < (CLUSTER_SIZE-1); outerCount++) {
-            for (int innerCount = (outerCount+1); innerCount < CLUSTER_SIZE; innerCount++) {
-                azDiff = visibleBaseToSensorSpherical[outerCount].az - visibleBaseToSensorSpherical[innerCount].az;
-                elDiff = visibleBaseToSensorSpherical[outerCount].el - visibleBaseToSensorSpherical[innerCount].el;
-                tempEstimatedAngle = Math.sqrt((azDiff*azDiff)+(elDiff*elDiff));
-                if (tempEstimatedAngle > maxMeasuredAngle){
-                    maxMeasuredAngle = tempEstimatedAngle;
-                    heldOuter = outerCount;
-                    heldInner = innerCount;
+            if(base1ToSensorVisible[outerCount]){
+                for (int innerCount = (outerCount+1); innerCount < CLUSTER_SIZE; innerCount++) {
+                    if(base1ToSensorVisible[innerCount]){
+                        azDiff = rawBaseToSensorSpherical[outerCount].az - rawBaseToSensorSpherical[innerCount].az;
+                        elDiff = rawBaseToSensorSpherical[outerCount].el - rawBaseToSensorSpherical[innerCount].el;
+                        tempEstimatedAngle = Math.sqrt((azDiff*azDiff)+(elDiff*elDiff));
+                        if (tempEstimatedAngle > maxMeasuredAngle){
+                            maxMeasuredAngle = tempEstimatedAngle;
+                            heldOuter = outerCount;
+                            heldInner = innerCount;
+                        }
+                    }
                 }
             }
         }
-//        System.out.printf("\n\r   Base Psn: (%2.10f, %2.10f, %2.10f)", base1OriginPosition.x, base1OriginPosition.y, base1OriginPosition.z);
-//        System.out.printf("\n\r   Clus Psn: (%2.10f, %2.10f, %2.10f)", clusterOriginPosition.x, clusterOriginPosition.y, clusterOriginPosition.z);
-//        System.out.printf("\n\r   Esti Psn: (%2.10f, %2.10f, %2.10f)", vectorEstimateFromIcoSphere.x, vectorEstimateFromIcoSphere.y, vectorEstimateFromIcoSphere.z);
-        estimateOffset.set(vectorEstimateFromIcoSphere).sub(clusterOriginPosition);
-//        System.out.printf("\n\r   First Sensor(%d), Second Sensor(%d) - measured angle (%2.10f)", heldOuter, heldInner, Math.toDegrees(maxMeasuredAngle));
+        System.out.printf("\n\r\n\r   First Sensor(%d), Second Sensor(%d)\n\r   Measured Range angle (%2.10f)", heldOuter, heldInner, Math.toDegrees(maxMeasuredAngle));
+        estimateOffset.set(vectorEstimate);
 
-        // Get calculated and the angle from measured data
-        tempEstimatedAngle = angleThreePointsVector3(clusterSensorPositions[heldOuter], vectorEstimateFromIcoSphere, clusterSensorPositions[heldInner]);
-//        System.out.printf("\n\r   Angle to estimate (%2.10f)", Math.toDegrees(tempEstimatedAngle));
-//        System.out.printf("\n\r   Angle to actual (%2.10f)", Math.toDegrees(maxMeasuredAngle));
+        // Get calculated and the angle from estimated data
+        tempEstimatedAngle = angleThreePointsVector3(clusterSensorPositions[heldOuter], vectorEstimate, clusterSensorPositions[heldInner]);
+        System.out.printf("\n\r   Initial Range Angle (%2.10f)", Math.toDegrees(tempEstimatedAngle));
 
-        estimateOffset.scale (Math.toDegrees(tempEstimatedAngle)/Math.toDegrees(maxMeasuredAngle));
-        vectorEstimateFromIcoSphere.set(estimateOffset).add(clusterOriginPosition);
-        tempEstimatedAngle = angleThreePointsVector3(clusterSensorPositions[heldOuter], vectorEstimateFromIcoSphere, clusterSensorPositions[heldInner]);
-        System.out.printf("\n\r   EST Psn: (%2.10f, %2.10f, %2.10f)", vectorEstimateFromIcoSphere.x, vectorEstimateFromIcoSphere.y, vectorEstimateFromIcoSphere.z);
-        System.out.printf("\n\r   Angle to estimate (%2.10f)\n\r", Math.toDegrees(tempEstimatedAngle));
+        estimateOffset.scale (tempEstimatedAngle/maxMeasuredAngle);
+        vectorEstimate.set(estimateOffset);
+        tempEstimatedAngle = angleThreePointsVector3(clusterSensorPositions[heldOuter], vectorEstimate, clusterSensorPositions[heldInner]);
+        System.out.printf("\n\r   Scaled Range Angle (%2.10f)", Math.toDegrees(tempEstimatedAngle));
+        System.out.printf("\n\r   EST Psn: (%2.10f, %2.10f, %2.10f)", vectorEstimate.x, vectorEstimate.y, vectorEstimate.z);
     }
     
 
@@ -196,29 +187,17 @@ public class DynamicOutput extends JPanel
         double azDiff;
 
         // Find the pair with the widest angle
-        System.out.printf("\n\r   visibleBaseToSensorSpherical[0]: (a:%2.10f, e:%2.10f, r:%2.10f), ", Math.toDegrees(visibleBaseToSensorSpherical[0].az), Math.toDegrees(visibleBaseToSensorSpherical[0].el), visibleBaseToSensorSpherical[0].r);
-        System.out.printf("\n\r         perspectivePointsCentroid: (a:%2.10f, e:%2.10f, r:%2.10f), ", Math.toDegrees(perspectivePointsCentroid.az), Math.toDegrees(perspectivePointsCentroid.el), perspectivePointsCentroid.r);
-        azDiff = visibleBaseToSensorSpherical[0].az - perspectivePointsCentroid.az;
-        elDiff = visibleBaseToSensorSpherical[0].el - perspectivePointsCentroid.el;
+        azDiff = zeroedRawBaseToSensorSpherical[8].az;
+        elDiff = zeroedRawBaseToSensorSpherical[8].el;
         visMeasuredAngle = Math.sqrt((azDiff*azDiff)+(elDiff*elDiff));
-        System.out.printf("\n\r   visMeasuredAngle:%2.10f, azDiff:%2.10f, elDiff:%2.10f", visMeasuredAngle, azDiff, elDiff);
 
-        System.out.printf("\n\r   clusterSensorEstimateSpherical[0]: (a:%2.10f, e:%2.10f, r:%2.10f), ", Math.toDegrees(clusterSensorEstimateSpherical[0].az), Math.toDegrees(clusterSensorEstimateSpherical[0].el), clusterSensorEstimateSpherical[0].r);
-        System.out.printf("\n\r        estimateBearingFromIcoSphere: (a:%2.10f, e:%2.10f, r:%2.10f), ", Math.toDegrees(estimateBearingFromIcoSphere.az), Math.toDegrees(estimateBearingFromIcoSphere.el), estimateBearingFromIcoSphere.r);
-        azDiff = clusterSensorEstimateSpherical[0].az - estimateBearingFromIcoSphere.az;
-        elDiff = clusterSensorEstimateSpherical[0].el - estimateBearingFromIcoSphere.el;
+        azDiff = zeroedClusterSensorEstimateSpherical[8].az;
+        elDiff = zeroedClusterSensorEstimateSpherical[8].el;
         estMeasuredAngle = Math.sqrt((azDiff*azDiff)+(elDiff*elDiff));
-        System.out.printf("\n\r   estMeasuredAngle:%2.10f, azDiff:%2.10f, elDiff:%2.10f", estMeasuredAngle, azDiff, elDiff);
         
-        estimateBearingFromIcoSphere.r /= (visMeasuredAngle/estMeasuredAngle);
-        
-        vectorEstimateFromIcoSphere.setFromSpherical(estimateBearingFromIcoSphere);
-        System.out.printf("\n\r   EST Psn: (%2.10f, %2.10f, %2.10f)", vectorEstimateFromIcoSphere.x, vectorEstimateFromIcoSphere.y, vectorEstimateFromIcoSphere.z);
+        bearingEstimate.r /= (visMeasuredAngle/estMeasuredAngle);
+        vectorEstimate.setFromSpherical(bearingEstimate);
     }
-
-
-
-
 
 
     
@@ -227,13 +206,15 @@ public class DynamicOutput extends JPanel
     // ALL ANGLES ARE BASED AROUND THE CLUSTER BEING AT ZERO
     private void getEstimatedSensorAngles() {
 //        System.out.printf("\n\rgetEstimatedSensorAngles:");
-        estimatedSensorsCentroid.r = 0d;
+    estimatedSensorsCentroid.az = 0d;
+    estimatedSensorsCentroid.el = 0d;
+    estimatedSensorsCentroid.r = 0d;
 
         // Setup sensor cluster detector positions and normal positions (wrt to the detector)
         for (int count = 0; count < CLUSTER_SIZE; count++) {
             if(base1ToSensorVisible[count]){
                 // Get the Spherical Co-ords for the sensors
-                clusterSensorEstimatedPositions[count].set(vectorEstimateFromIcoSphere);
+                clusterSensorEstimatedPositions[count].set(vectorEstimate);
                 clusterSensorEstimatedPositions[count].add(clusterSensorPositions[count]);
                 clusterSensorEstimateSpherical[count].setFromVector3(clusterSensorEstimatedPositions[count]);
                 estimatedSensorsCentroid.az += clusterSensorEstimateSpherical[count].az;
@@ -244,33 +225,25 @@ public class DynamicOutput extends JPanel
         estimatedSensorsCentroid.az /= estimatedSensorsCentroid.r;
         estimatedSensorsCentroid.el /= estimatedSensorsCentroid.r;
         
-        estimateBearingFromIcoSphere.setFromVector3(vectorEstimateFromIcoSphere);
+        bearingEstimate.setFromVector3(vectorEstimate);
 
-        // Run through the cluster and print the results
-//        System.out.printf("\n\r   Est Base 1 Posn (x:%2.10f, y:%2.10f, z:%2.10f)", vectorEstimateFromIcoSphere.x, vectorEstimateFromIcoSphere.y, vectorEstimateFromIcoSphere.z);
-//        System.out.printf("\n\r   Cluster 1 Posn (x:%2.10f, y:%2.10f, z:%2.10f)", clusterOriginPosition.x, clusterOriginPosition.y, clusterOriginPosition.z);
-//        System.out.printf("\n\r   Clus to EST Brng (a:%2.10f, e:%2.10f, r:%2.10f), ", Math.toDegrees(estimateBearingFromIcoSphere.az), Math.toDegrees(estimateBearingFromIcoSphere.el), estimateBearingFromIcoSphere.r);
-//        System.out.print("\n\r   Sens: (EST centric x, y, z), (Az Angle, El Angle, Range), AoI, Relative Power");
+        // Run through the cluster and zero for the centroid
         for (int count = 0; count < CLUSTER_SIZE; count++) {
             if(base1ToSensorVisible[count]){
-//                System.out.printf("\n\r   %d: ", count);
-//                System.out.printf("(%2.10f, %2.10f, %2.10f), ", clusterSensorEstimatedPositions[count].x, clusterSensorEstimatedPositions[count].y, clusterSensorEstimatedPositions[count].z);
-//                System.out.printf("(%2.10f, %2.10f, %2.10f), ", Math.toDegrees(clusterSensorEstimateSpherical[count].az), Math.toDegrees(clusterSensorEstimateSpherical[count].el), clusterSensorEstimateSpherical[count].r);
+                zeroedClusterSensorEstimateSpherical[count].az = clusterSensorEstimateSpherical[count].az - bearingEstimate.az;
+                zeroedClusterSensorEstimateSpherical[count].el = clusterSensorEstimateSpherical[count].el - bearingEstimate.el;
+//                System.out.printf("\n\r   EST %d: ", count);
+//                System.out.printf("(%3.18f, %3.18f, %2.10f), ", Math.toDegrees(zeroedClusterSensorEstimateSpherical[count].az), Math.toDegrees(zeroedClusterSensorEstimateSpherical[count].el), zeroedClusterSensorEstimateSpherical[count].r);
             }
         }
         System.out.print("\n\r");
     }
     
     
-    // Create the values from the system, giving which sensors within the cluster
-    // are lit and what the bearing is to that sensor from the base
-    // ALL ANGLES ARE BASED AROUND THE CLUSTER BEING AT ZERO
-    private void getLitSensorAngles() {
-//        System.out.printf("\n\r\n\rgetLitSensorAngles:");
-        Vector3 clusterOriginToBase = new Vector3(base1OriginPosition);
-        actualBearingFromBase.setFromVector3(clusterOriginToBase);
-        numberOfVisibleSensors = 0;
-        visibleSensorsCentroid.setFromRads(0d, 0d, 0d);
+    // Create the values from the CNLohrs readins
+    private void getCNLohrReadings() {
+        System.out.printf("\n\r\n\rgetCNLohrReadings:");
+        rawSensorsCentroid.setFromRads(0d, 0d, 0d);
 
         // Setup sensor cluster detector positions and normal positions (wrt to the detector)
         for (int count = 0; count < CLUSTER_SIZE; count++) {
@@ -282,55 +255,45 @@ public class DynamicOutput extends JPanel
             clusterSensorNormalPositions[count].y = clusterSensorPositions[count].y + deviceNormals[count][0]; // Meters
             clusterSensorNormalPositions[count].z = clusterSensorPositions[count].z + deviceNormals[count][1]; // Meters
             
-            // Transform for orientation, rotates 180 deg in az
-//            clusterSensorPositions[count].x *= -1d;
-//            clusterSensorPositions[count].y *= -1d;
-//            clusterSensorNormalPositions[count].x *= -1d;
-//            clusterSensorNormalPositions[count].y *= -1d;
-            
-            // Get the Spherical Co-ords for the sensors
-            base1ToSensorVector[count].set(base1OriginPosition);
-            base1ToSensorVector[count].add(clusterSensorPositions[count]);
-            visibleBaseToSensorSpherical[count].setFromVector3(base1ToSensorVector[count]);
-            visibleSensorsCentroid.az += visibleBaseToSensorSpherical[count].az;
-            visibleSensorsCentroid.el += visibleBaseToSensorSpherical[count].el;
-            visibleSensorsCentroid.r++;
-            
-            // work out the angle to the base from each sensor normal
-            base1ToSensorAoI[count] = angleThreePointsVector3(base1OriginPosition, clusterSensorPositions[count], clusterSensorNormalPositions[count]);
-            if (Math.toDegrees(base1ToSensorAoI[count]) < 80d){
+            if ((cnlohrHMDReadings[count][0]<0.000001) && (cnlohrHMDReadings[count][1]<0.000001)){
+                base1ToSensorVisible[count] = false;
+            } else {
                 base1ToSensorVisible[count] = true;
                 numberOfVisibleSensors++;
-            } else {
-                base1ToSensorVisible[count] = false;
+
+                // Get the Spherical Co-ords for the sensors
+                rawBaseToSensorSpherical[count].setFromDegrees(cnlohrHMDReadings[count][0], cnlohrHMDReadings[count][1], 1);
+                rawSensorsCentroid.az += rawBaseToSensorSpherical[count].az;
+                rawSensorsCentroid.el += rawBaseToSensorSpherical[count].el;
+                rawSensorsCentroid.r++;
             }
         }
-        visibleSensorsCentroid.az /= visibleSensorsCentroid.r;
-        visibleSensorsCentroid.el /= visibleSensorsCentroid.r;
-        visibleSensorsCentroid.r = 1d;
+        rawSensorsCentroid.az /= rawSensorsCentroid.r;
+        rawSensorsCentroid.el /= rawSensorsCentroid.r;
+        rawSensorsCentroid.r = 1d;
 
         // Run through the cluster and print the results
 //        System.out.printf("\n\r   Base 1 Posn (x:%2.10f, y:%2.10f, z:%2.10f)", base1OriginPosition.x, base1OriginPosition.y, base1OriginPosition.z);
-//        System.out.printf("\n\r   Cluster 1 Posn (x:%2.10f, y:%2.10f, z:%2.10f)", clusterOriginPosition.x, clusterOriginPosition.y, clusterOriginPosition.z);
 //        System.out.printf("\n\r   Clus to Base Brng (a:%2.10f, e:%2.10f, r:%2.10f), ", actualBearingFromBase.az, actualBearingFromBase.el, actualBearingFromBase.r);
 //        System.out.print("\n\r   Sens: (Base1 centric x, y, z), (Az Angle, El Angle, Range), AoI, Relative Power");
         for (int count = 0; count < CLUSTER_SIZE; count++) {
             if(base1ToSensorVisible[count]){
-//                System.out.printf("\n\r   %d: ", count);
-//                System.out.printf("(%2.10f, %2.10f, %2.10f), ", base1ToSensorVector[count].x, base1ToSensorVector[count].y, base1ToSensorVector[count].z);
-//                System.out.printf("(%3.18f, %3.18f, %2.10f), ", visibleBaseToSensorSpherical[count].az, visibleBaseToSensorSpherical[count].el, visibleBaseToSensorSpherical[count].r);
-//                System.out.printf("%.3f, %.3f, ", Math.toDegrees(base1ToSensorAoI[count]), base1ToSensorRelativePower[count]);
+                zeroedRawBaseToSensorSpherical[count].az = rawBaseToSensorSpherical[count].az - rawSensorsCentroid.az;
+                zeroedRawBaseToSensorSpherical[count].el = rawBaseToSensorSpherical[count].el - rawSensorsCentroid.el;
+                System.out.printf("\n\r   CNL %d: ", count);
+                System.out.printf("(%3.18f, %3.18f, %2.10f), ", Math.toDegrees(zeroedRawBaseToSensorSpherical[count].az), Math.toDegrees(zeroedRawBaseToSensorSpherical[count].el), zeroedRawBaseToSensorSpherical[count].r);
             }
         }
 //        System.out.print("\n\r");
     }
-    
 
-    private void getEstimated2dAngles(){
+
+
+
+// Works out and sorts the 2d angles from vertical
+    private void get2dAnglesFromEstimate(){
         Vector2 point1 = new Vector2();
         double angle = 0;
-
-//        System.out.printf("\n\r\n\rgetEstimated2dAngles from Vertical");
 
         for (int count = 0; count < CLUSTER_SIZE; count++) {
             clusterSensorSortedListSensorId[count] = -1;
@@ -341,7 +304,7 @@ public class DynamicOutput extends JPanel
         int litListCount = 0;
         for (int count = 0; count < CLUSTER_SIZE; count++) {
             if(base1ToSensorVisible[count]){
-                point1.set(clusterSensorEstimateSpherical[count].az-estimateBearingFromIcoSphere.az, clusterSensorEstimateSpherical[count].el-estimateBearingFromIcoSphere.el);
+                point1.set(zeroedClusterSensorEstimateSpherical[count].az, zeroedClusterSensorEstimateSpherical[count].el);
                 angle = angleFromVerticalVector2(point1);
 //                System.out.printf("\n\r %d(x:%2.10f, y:%2.10f): %2.10f", count, point1.x, point1.y, Math.toDegrees(angle));
                 clusterSensorSortedListSensorId[litListCount] = count;
@@ -354,7 +317,7 @@ public class DynamicOutput extends JPanel
         int tempInt = 0;
         int maxSortLit = numberOfVisibleSensors;
         for (int outerCount = 0; outerCount < numberOfVisibleSensors-1; outerCount++) {
-            for (int innerCount = 0; innerCount < maxSortLit; innerCount++) {
+            for (int innerCount = 0; innerCount < maxSortLit-1; innerCount++) {
                 if (clusterSensorSortedListAngles[innerCount] > clusterSensorSortedListAngles[innerCount+1]){
                     tempDouble = clusterSensorSortedListAngles[innerCount];
                     tempInt = clusterSensorSortedListSensorId[innerCount];
@@ -366,16 +329,11 @@ public class DynamicOutput extends JPanel
             }
             maxSortLit--;
         }
-        
-//        System.out.printf("\n\r");
-        for (int count = 0; count < numberOfVisibleSensors; count++) {
-//            System.out.printf("\n\r %d: %2.18f Rads", clusterSensorSortedListSensorId[count], clusterSensorSortedListAngles[count]);
-        }
     }
 
 
-    private void getLivePerspectivePoints(){
-//        System.out.printf("\n\r\n\rgetLivePerspectivePoints");
+    private void getPerspectiveCentroidFromLiveData(){
+//        System.out.printf("\n\r\n\rgetPerspectiveCentroidFromLiveData");
 //        System.out.printf(" (numberOfVisibleSensors:%d)", numberOfVisibleSensors);
 
         Vector2 PtA = new Vector2();
@@ -406,20 +364,57 @@ public class DynamicOutput extends JPanel
         }
 
         perspectivePointsCentroid.setFromRads(0d, 0d, 0.0d);
-        
+
+        // Calculate the first sensor in the list
+        PtA.set(zeroedRawBaseToSensorSpherical[clusterSensorSortedListSensorId[numberOfVisibleSensors-1]].az, zeroedRawBaseToSensorSpherical[clusterSensorSortedListSensorId[numberOfVisibleSensors-1]].el);
+        PtB.set(zeroedRawBaseToSensorSpherical[clusterSensorSortedListSensorId[0]].az,   zeroedRawBaseToSensorSpherical[clusterSensorSortedListSensorId[0]].el);
+        PtC.set(zeroedRawBaseToSensorSpherical[clusterSensorSortedListSensorId[1]].az, zeroedRawBaseToSensorSpherical[clusterSensorSortedListSensorId[1]].el);
+
+        // Get offsets A from B
+        VecBtoA.set(PtA).sub(PtB);
+        AngleBtoA = clusterSensorSortedListAngles[0] - clusterSensorSortedListAngles[numberOfVisibleSensors-1];
+        System.out.printf("\n\r %d, AngleBtoA(%2.18f)", 0, Math.toDegrees(AngleBtoA));
+        VecBtoA.scale(Math.abs(1.0d/Math.tan(AngleBtoA)));
+        PtE.set(VecBtoA).rot90AntiClockwise().add(PtA);
+        PtI.set(VecBtoA).rot90Clockwise().add(PtA);
+        if (AngleBtoA < (Math.PI/2d)){
+            PtF.set(PtE).sub(PtB).scale(0.5d).add(PtB);
+        } else {
+            PtF.set(PtI).sub(PtB).scale(0.5d).add(PtB);
+        }
+
+        // Get offsets C from B
+        VecBtoC.set(PtC).sub(PtB);
+        AngleBtoC = clusterSensorSortedListAngles[1] - clusterSensorSortedListAngles[0];
+        System.out.printf(", AngleBtoC(%2.18f)", Math.toDegrees(AngleBtoC));
+        VecBtoC.scale(Math.abs(1.0d/Math.tan(AngleBtoC)));
+        PtG.set(VecBtoC).rot90Clockwise().add(PtC);
+        PtJ.set(VecBtoC).rot90AntiClockwise().add(PtC);
+        if (AngleBtoC < (Math.PI/2d)){
+            PtH.set(PtG).sub(PtB).scale(0.5d).add(PtB);
+        } else {
+            PtH.set(PtJ).sub(PtB).scale(0.5d).add(PtB);
+        }
+
+        reflectDistFH = Math.cos(angleThreePointsVector2(PtB, PtF, PtH)) * PtB.distance(PtF);
+        PtD.set(PtH).sub(PtF).scale(reflectDistFH/PtF.distance(PtH)).add(PtF);
+        PtFinal.set(PtD).sub(PtB).scale(2.0d).add(PtB);
+        perspectivePointsFromEstimate[clusterSensorSortedListSensorId[0]].setFromRads(PtFinal.x, PtFinal.y, 1.0d);
+        perspectivePointsCentroid.az += PtFinal.x;
+        perspectivePointsCentroid.el += PtFinal.y;
+        perspectivePointsCentroid.r++;
+        System.out.printf(", PtFinal:(%2.18f, %2.18f)", Math.toDegrees(PtFinal.x), Math.toDegrees(PtFinal.y));
+
         // Run through the middle sensors (skip first and last)
         for (int outerCount = 1; outerCount < numberOfVisibleSensors-1; outerCount++) {
-            PtA.set(visibleBaseToSensorSpherical[clusterSensorSortedListSensorId[outerCount-1]].az, visibleBaseToSensorSpherical[clusterSensorSortedListSensorId[outerCount-1]].el);
-            PtB.set(visibleBaseToSensorSpherical[clusterSensorSortedListSensorId[outerCount]].az,   visibleBaseToSensorSpherical[clusterSensorSortedListSensorId[outerCount]].el);
-            PtC.set(visibleBaseToSensorSpherical[clusterSensorSortedListSensorId[outerCount+1]].az, visibleBaseToSensorSpherical[clusterSensorSortedListSensorId[outerCount+1]].el);
+            PtA.set(zeroedRawBaseToSensorSpherical[clusterSensorSortedListSensorId[outerCount-1]].az, zeroedRawBaseToSensorSpherical[clusterSensorSortedListSensorId[outerCount-1]].el);
+            PtB.set(zeroedRawBaseToSensorSpherical[clusterSensorSortedListSensorId[outerCount]].az,   zeroedRawBaseToSensorSpherical[clusterSensorSortedListSensorId[outerCount]].el);
+            PtC.set(zeroedRawBaseToSensorSpherical[clusterSensorSortedListSensorId[outerCount+1]].az, zeroedRawBaseToSensorSpherical[clusterSensorSortedListSensorId[outerCount+1]].el);
             
-//            System.out.printf("\n\r ListPosn:%d, A:%d (Az:%2.18f, El:%2.18f), FromVert:%2.18f", outerCount-1, clusterSensorSortedListSensorId[outerCount-1], PtA.x, PtA.y, clusterSensorSortedListAngles[outerCount-1]);
-//            System.out.printf("\n\r ListPosn:%d, B:%d (Az:%2.18f, El:%2.18f), FromVert:%2.18f", outerCount,   clusterSensorSortedListSensorId[outerCount], PtB.x, PtB.y, visibleBaseToSensorSpherical[clusterSensorSortedListSensorId[outerCount]].el, clusterSensorSortedListAngles[outerCount]);
-//            System.out.printf("\n\r ListPosn:%d, C:%d (Az:%2.18f, El:%2.18f), FromVert:%2.18f", outerCount+1, clusterSensorSortedListSensorId[outerCount+1], PtC.x, PtC.y, visibleBaseToSensorSpherical[clusterSensorSortedListSensorId[outerCount+1]].el, clusterSensorSortedListAngles[outerCount+1]);
-
             // Get offsets A from B
             VecBtoA.set(PtA).sub(PtB);
             AngleBtoA = clusterSensorSortedListAngles[outerCount] - clusterSensorSortedListAngles[outerCount-1];
+            System.out.printf("\n\r %d, AngleBtoA(%2.18f)", outerCount, Math.toDegrees(AngleBtoA));
             VecBtoA.scale(Math.abs(1.0d/Math.tan(AngleBtoA)));
             PtE.set(VecBtoA).rot90AntiClockwise().add(PtA);
             PtI.set(VecBtoA).rot90Clockwise().add(PtA);
@@ -432,6 +427,7 @@ public class DynamicOutput extends JPanel
             // Get offsets C from B
             VecBtoC.set(PtC).sub(PtB);
             AngleBtoC = clusterSensorSortedListAngles[outerCount+1] - clusterSensorSortedListAngles[outerCount];
+            System.out.printf(", AngleBtoC(%2.18f)", Math.toDegrees(AngleBtoC));
             VecBtoC.scale(Math.abs(1.0d/Math.tan(AngleBtoC)));
             PtG.set(VecBtoC).rot90Clockwise().add(PtC);
             PtJ.set(VecBtoC).rot90AntiClockwise().add(PtC);
@@ -448,13 +444,106 @@ public class DynamicOutput extends JPanel
             perspectivePointsCentroid.az += PtFinal.x;
             perspectivePointsCentroid.el += PtFinal.y;
             perspectivePointsCentroid.r++;
-//            System.out.printf("\n\r %d, PtFinal:(%2.18f, %2.18f)", outerCount, Math.toDegrees(PtFinal.x), Math.toDegrees(PtFinal.y));
+            System.out.printf(", PtFinal:(%2.18f, %2.18f)", Math.toDegrees(PtFinal.x), Math.toDegrees(PtFinal.y));
         }
+        
+        // Calculate the last sensor in the list
+        PtA.set(zeroedRawBaseToSensorSpherical[clusterSensorSortedListSensorId[numberOfVisibleSensors-2]].az, zeroedRawBaseToSensorSpherical[clusterSensorSortedListSensorId[numberOfVisibleSensors-2]].el);
+        PtB.set(zeroedRawBaseToSensorSpherical[clusterSensorSortedListSensorId[numberOfVisibleSensors-1]].az,   zeroedRawBaseToSensorSpherical[clusterSensorSortedListSensorId[numberOfVisibleSensors-1]].el);
+        PtC.set(zeroedRawBaseToSensorSpherical[clusterSensorSortedListSensorId[0]].az, zeroedRawBaseToSensorSpherical[clusterSensorSortedListSensorId[0]].el);
+
+        // Get offsets A from B
+        VecBtoA.set(PtA).sub(PtB);
+        AngleBtoA = clusterSensorSortedListAngles[numberOfVisibleSensors-1] - clusterSensorSortedListAngles[numberOfVisibleSensors-2];
+        System.out.printf("\n\r %d, AngleBtoA(%2.18f)", numberOfVisibleSensors-1, Math.toDegrees(AngleBtoA));
+        VecBtoA.scale(Math.abs(1.0d/Math.tan(AngleBtoA)));
+        PtE.set(VecBtoA).rot90AntiClockwise().add(PtA);
+        PtI.set(VecBtoA).rot90Clockwise().add(PtA);
+        if (AngleBtoA < (Math.PI/2d)){
+            PtF.set(PtE).sub(PtB).scale(0.5d).add(PtB);
+        } else {
+            PtF.set(PtI).sub(PtB).scale(0.5d).add(PtB);
+        }
+
+        // Get offsets C from B
+        VecBtoC.set(PtC).sub(PtB);
+        AngleBtoC = clusterSensorSortedListAngles[0] - clusterSensorSortedListAngles[numberOfVisibleSensors-1];
+        System.out.printf(", AngleBtoC(%2.18f)", Math.toDegrees(AngleBtoC));
+        VecBtoC.scale(Math.abs(1.0d/Math.tan(AngleBtoC)));
+        PtG.set(VecBtoC).rot90Clockwise().add(PtC);
+        PtJ.set(VecBtoC).rot90AntiClockwise().add(PtC);
+        if (AngleBtoC < (Math.PI/2d)){
+            PtH.set(PtG).sub(PtB).scale(0.5d).add(PtB);
+        } else {
+            PtH.set(PtJ).sub(PtB).scale(0.5d).add(PtB);
+        }
+
+        reflectDistFH = Math.cos(angleThreePointsVector2(PtB, PtF, PtH)) * PtB.distance(PtF);
+        PtD.set(PtH).sub(PtF).scale(reflectDistFH/PtF.distance(PtH)).add(PtF);
+        PtFinal.set(PtD).sub(PtB).scale(2.0d).add(PtB);
+        perspectivePointsFromEstimate[clusterSensorSortedListSensorId[numberOfVisibleSensors-1]].setFromRads(PtFinal.x, PtFinal.y, 1.0d);
+        perspectivePointsCentroid.az += PtFinal.x;
+        perspectivePointsCentroid.el += PtFinal.y;
+        perspectivePointsCentroid.r++;
+        System.out.printf(", PtFinal:(%2.18f, %2.18f)", Math.toDegrees(PtFinal.x), Math.toDegrees(PtFinal.y));
+
+        
         perspectivePointsCentroid.az /= perspectivePointsCentroid.r;
         perspectivePointsCentroid.el /= perspectivePointsCentroid.r;
         perspectivePointsCentroid.r = 1d;
         System.out.printf("\n\r perspectivePointsCentroid:(a:%3.18f, e:%3.18f)", Math.toDegrees(perspectivePointsCentroid.az), Math.toDegrees(perspectivePointsCentroid.el));
     }
+
+    
+
+
+    private void refinePerspectiveCentroid(){
+        double[] distanceList = new double[CLUSTER_SIZE];
+        double tempAzDist;
+        double tempElDist;
+        double tempDouble;
+        int tempInt = 0;
+        int maxSortLit = numberOfVisibleSensors;
+        
+        
+        for (int outerCount = 0; outerCount < numberOfVisibleSensors-1; outerCount++) {
+            for (int recalcCount = 0; recalcCount < maxSortLit-1; recalcCount++) {
+                tempAzDist = (perspectivePointsCentroid.az - perspectivePointsFromEstimate[clusterSensorSortedListSensorId[recalcCount]].az);
+                tempElDist = (perspectivePointsCentroid.el - perspectivePointsFromEstimate[clusterSensorSortedListSensorId[recalcCount]].el);
+                distanceList[recalcCount] = Math.sqrt((tempAzDist*tempAzDist)+(tempElDist*tempElDist));
+            }
+            for (int innerCount = 0; innerCount < maxSortLit-1; innerCount++) {
+                if (distanceList[innerCount] > distanceList[innerCount+1]){
+                    tempInt = clusterSensorSortedListSensorId[innerCount];
+                    tempDouble = distanceList[innerCount];
+                    clusterSensorSortedListSensorId[innerCount] = clusterSensorSortedListSensorId[innerCount+1];
+                    distanceList[innerCount] = distanceList[innerCount+1];
+                    clusterSensorSortedListSensorId[innerCount+1] = tempInt;
+                    distanceList[innerCount+1] = tempDouble;
+                }
+            }
+            maxSortLit--;
+            for (int innerCount = 0; innerCount < maxSortLit-1; innerCount++) {
+            perspectivePointsCentroid.setFromRads(0,0,0);
+                perspectivePointsCentroid.az += perspectivePointsFromEstimate[clusterSensorSortedListSensorId[innerCount]].az;
+                perspectivePointsCentroid.el += perspectivePointsFromEstimate[clusterSensorSortedListSensorId[innerCount]].el;
+                perspectivePointsCentroid.r++;
+                perspectivePointsCentroid.az /= perspectivePointsCentroid.r;
+                perspectivePointsCentroid.el /= perspectivePointsCentroid.r;
+                perspectivePointsCentroid.r = 1d;
+            }
+        }
+
+        perspectivePointsFromEstimate[clusterSensorSortedListSensorId[numberOfVisibleSensors-1]].setFromRads(PtFinal.x, PtFinal.y, 1.0d);
+        perspectivePointsCentroid.az += PtFinal.x;
+    }
+
+
+
+
+
+
+
 
 
     double angleFromVerticalVector2(Vector2 inVec) {
@@ -501,12 +590,19 @@ public class DynamicOutput extends JPanel
     
     private void runApplication() {
         initialiseClassVariables();
-        getLitSensorAngles();
+//        getLitSensorAngles();
+        getCNLohrReadings();
         getInitialBearingFromIcoSphere();
         reviseRangeFromSensorAngles();
         getEstimatedSensorAngles();
-        getEstimated2dAngles();
-        getLivePerspectivePoints();
+        get2dAnglesFromEstimate();
+        getPerspectiveCentroidFromLiveData();
+
+        System.out.printf("\n\r\n\r WHITE   : zeroedRawBaseToSensorSpherical");
+        System.out.printf("\n\r RED     : bearingEstimate");
+        System.out.printf("\n\r YELLO   : zeroedClusterSensorEstimateSpherical");
+        System.out.printf("\n\r PINK    : estimatedSensorsCentroid");
+        System.out.printf("\n\r MAGENTA : perspectivePointsCentroid");
         System.out.printf("\n\r\n\rDONE.\n\r ");
     }
 
@@ -567,58 +663,63 @@ public class DynamicOutput extends JPanel
     public void mouseClicked(MouseEvent e) {
         double rangeScaling = 0d;
         String buttonString;
-        double centroidOffsetScale = 1d;
+        double centroidOffsetScale = 3d;
         if (MouseEvent.BUTTON1 == e.getButton()){
-            buttonString = "B1(Cen)";
-            outputCenter.set(canvasArea.getXfromPix(e.getX()), canvasArea.getYfromPix(e.getY()));
-            System.out.append("\n\rMouse " + buttonString + " clicked (# of clicks: " + e.getClickCount() + ")"
-                    + " (" + e.getX() + "," + e.getY() + ")"
-                    + " (" + canvasArea.getXfromPix(e.getX()) + "," + canvasArea.getYfromPix(e.getY()) + ")"
-                    + " detected on "
-                    + e.getComponent().getClass().getName());
-        } else if (MouseEvent.BUTTON2 == e.getButton()){
-            buttonString = "B2(Zm+)";
-            outputScale *= 1.1d;
+            buttonString = "B1(Zm-)";
+            outputScale *= 1.5d;
+            System.out.printf("\n\r B1(Zm-) %2.5f)", outputScale);
+//        } else if (MouseEvent.BUTTON2 == e.getButton()){
+//            buttonString = "B1(Cen)";
+//            outputCenter.set(canvasArea.getXfromPix(e.getX()), canvasArea.getYfromPix(e.getY()));
+//            System.out.append("\n\rMouse " + buttonString + " clicked (# of clicks: " + e.getClickCount() + ")"
+//                    + " (" + e.getX() + "," + e.getY() + ")"
+//                    + " (" + canvasArea.getXfromPix(e.getX()) + "," + canvasArea.getYfromPix(e.getY()) + ")"
+//                    + " detected on "
+//                    + e.getComponent().getClass().getName());
         } else if (MouseEvent.BUTTON3 == e.getButton()){
-            buttonString = "B3(Zm-)";
-            outputScale *= 0.9d;
+            buttonString = "B3(Zm+)";
+            outputScale *= 1d/1.5d;
+            System.out.printf("\n\r B3(Zm+) %2.5f)", outputScale);
         } else {
-            System.out.printf("\n\r\n\r\n\r+++++  RECALCULATING  +++++");
-//            for (int counter = 0; counter < 100; counter++){
-                centroidDelta.set(perspectivePointsCentroid.az, perspectivePointsCentroid.el).sub(estimateBearingFromIcoSphere.az, estimateBearingFromIcoSphere.el);
-                System.out.printf("\n\r centroidDelta:(%2.18f, %2.18f)", Math.toDegrees(centroidDelta.x), Math.toDegrees(centroidDelta.y));
-                estimateBearingFromIcoSphere.az += (centroidDelta.x * centroidOffsetScale);
-                estimateBearingFromIcoSphere.el += (centroidDelta.y * centroidOffsetScale);
-                vectorEstimateFromIcoSphere.setFromSpherical(estimateBearingFromIcoSphere);
-                baseEstPosnFromIcoSphere.set(clusterOriginPosition);
-                baseEstPosnFromIcoSphere.sub(vectorEstimateFromIcoSphere);
-                reviseRangeFromSensorLitAndEstSensorPosn();
+            System.out.printf("\n\r\n\r+++++  RECALCULATING  +++++");
+            for (int count = 0; count < 25; count++) {
+    //            System.out.printf("\n\r perspectivePointsCentroid0:(%2.18f, %2.18f, %2.18f)", Math.toDegrees(perspectivePointsCentroid.az), Math.toDegrees(perspectivePointsCentroid.el), perspectivePointsCentroid.r);
+    //            System.out.printf("\n\r bearingEstimate0:(%2.18f, %2.18f, %2.18f)", Math.toDegrees(bearingEstimate.az), Math.toDegrees(bearingEstimate.el), bearingEstimate.r);
+    //            System.out.printf("\n\r vectorEstimate0 :(%2.18f, %2.18f, %2.18f)", vectorEstimate.x, vectorEstimate.y, vectorEstimate.z);
+                centroidDelta.set(perspectivePointsCentroid.az, perspectivePointsCentroid.el);
+                bearingEstimate.az -= (centroidDelta.x * centroidOffsetScale);
+                bearingEstimate.el -= (centroidDelta.y * centroidOffsetScale);
+                vectorEstimate.setFromSpherical(bearingEstimate);
+                positionEstimate.set(0d,0d,0d);
+                positionEstimate.sub(vectorEstimate);
+
                 getEstimatedSensorAngles();
-                getEstimated2dAngles();
-                getLivePerspectivePoints();
-//            }
-            buttonString = "Bx";
-            System.out.printf("\n\r\n\r BLUE : ACTUAL (unknown) sensor bearing");
-            System.out.printf(    "\n\r WHITE: Visible Sensors angles");
-            System.out.printf(    "\n\r CYAN : visible sensor centroid ");
-            System.out.printf("\n\r\n\r RED  : est sensor bearing");
-            System.out.printf(    "\n\r YELLO: estimated Sensors angles");
-            System.out.printf(    "\n\r PINK : est sensor centroid");
+                reviseRangeFromSensorLitAndEstSensorPosn();
+                get2dAnglesFromEstimate();
+                getPerspectiveCentroidFromLiveData();
+            }
         }
         refreshCanvas();
-        canvasArea.circleAtScaled(outputCenter.x, outputCenter.y, Color.ORANGE, 5);
+        canvasArea.circleAtScaled(0, 0, Color.BLUE, 5);
     }
 
     private void refreshCanvas() {
+//        System.out.printf("\n\r\n\r *** REFRESH:");
+//        System.out.printf("\n\r perspectivePointsCentroid:(%2.18f, %2.18f)", Math.toDegrees(perspectivePointsCentroid.az), Math.toDegrees(perspectivePointsCentroid.el));
+//        System.out.printf("\n\r bearingEstimate9:(%2.18f, %2.18f, %2.18f)", Math.toDegrees(bearingEstimate.az), Math.toDegrees(bearingEstimate.el), bearingEstimate.r);
+//        System.out.printf("\n\r vectorEstimate9 :(%2.18f, %2.18f, %2.18f)", vectorEstimate.x, vectorEstimate.y, vectorEstimate.z);
+
         canvasArea.rescaleWindow(outputScale);
-        canvasArea.recenterWindow(Math.toDegrees(perspectivePointsCentroid.az), Math.toDegrees(perspectivePointsCentroid.el) );
+        canvasArea.recenterWindow(0, 0 );
         canvasArea.clearWindow();
 
-        // Actual and estimated bearing to device center
-        canvasArea.circleAtScaled(Math.toDegrees(actualBearingFromBase.az), Math.toDegrees(actualBearingFromBase.el), Color.BLUE, 4);
-        canvasArea.circleAtScaled(Math.toDegrees(estimateBearingFromIcoSphere.az), Math.toDegrees(estimateBearingFromIcoSphere.el), Color.RED, 4);
+        centroidDelta.set(perspectivePointsCentroid.az, perspectivePointsCentroid.el).sub(bearingEstimate.az, bearingEstimate.el);
 
-        canvasArea.circleAtScaled(Math.toDegrees(visibleSensorsCentroid.az), Math.toDegrees(visibleSensorsCentroid.el), Color.CYAN, 4);
+        // Actual and estimated bearing to device center
+//        canvasArea.circleAtScaled(Math.toDegrees(actualBearingFromBase.az), Math.toDegrees(actualBearingFromBase.el), Color.BLUE, 4);
+        canvasArea.circleAtScaled(Math.toDegrees(bearingEstimate.az), Math.toDegrees(bearingEstimate.el), Color.RED, 4);
+
+//        canvasArea.circleAtScaled(Math.toDegrees(rawSensorsCentroid.az), Math.toDegrees(rawSensorsCentroid.el), Color.CYAN, 4);
         canvasArea.circleAtScaled(Math.toDegrees(estimatedSensorsCentroid.az), Math.toDegrees(estimatedSensorsCentroid.el), Color.PINK, 4);
 
         canvasArea.circleAtScaled(Math.toDegrees(perspectivePointsCentroid.az), Math.toDegrees(perspectivePointsCentroid.el), Color.MAGENTA, 4);
@@ -626,45 +727,20 @@ public class DynamicOutput extends JPanel
         // Output actual sensor angles
         for (int count = 0; count < CLUSTER_SIZE; count++) {
             if (base1ToSensorVisible[count]) {
-                canvasArea.circleAtScaled(Math.toDegrees(visibleBaseToSensorSpherical[count].az), Math.toDegrees(visibleBaseToSensorSpherical[count].el), Color.WHITE, 4);
-                canvasArea.circleAtScaled(Math.toDegrees(clusterSensorEstimateSpherical[count].az), Math.toDegrees(clusterSensorEstimateSpherical[count].el), Color.YELLOW, 4);
+//                System.out.printf("\n\r   %d: ", count);
+//                System.out.printf("(%3.18f, %3.18f, %2.10f), ", zeroedRawBaseToSensorSpherical[count].az, zeroedRawBaseToSensorSpherical[count].el, zeroedRawBaseToSensorSpherical[count].r);
+                canvasArea.circleAtScaled(Math.toDegrees(zeroedRawBaseToSensorSpherical[count].az), Math.toDegrees(zeroedRawBaseToSensorSpherical[count].el), Color.WHITE, 4);
+//                System.out.printf("(%3.18f, %3.18f, %2.10f), ", zeroedClusterSensorEstimateSpherical[count].az, zeroedClusterSensorEstimateSpherical[count].el, zeroedClusterSensorEstimateSpherical[count].r);
+                canvasArea.circleAtScaled(Math.toDegrees(zeroedClusterSensorEstimateSpherical[count].az), Math.toDegrees(zeroedClusterSensorEstimateSpherical[count].el), Color.YELLOW, 4);
                 if (perspectivePointsFromEstimate[count].r > 0.5d) {
-//                    canvasArea.circleAtScaled(Math.toDegrees(perspectivePointsFromEstimate[count].az), Math.toDegrees(perspectivePointsFromEstimate[count].el), Color.GREEN, 4);
-                    canvasArea.lineBetweenScaled(Math.toDegrees(visibleBaseToSensorSpherical[count].az), Math.toDegrees(visibleBaseToSensorSpherical[count].el), Math.toDegrees(perspectivePointsFromEstimate[count].az), Math.toDegrees(perspectivePointsFromEstimate[count].el), Color.WHITE);
+                    canvasArea.circleAtScaled(Math.toDegrees(perspectivePointsFromEstimate[count].az), Math.toDegrees(perspectivePointsFromEstimate[count].el), Color.GREEN, 4);
+//                    canvasArea.lineBetweenScaled(Math.toDegrees(zeroedRawBaseToSensorSpherical[count].az), Math.toDegrees(zeroedRawBaseToSensorSpherical[count].el), Math.toDegrees(perspectivePointsFromEstimate[count].az), Math.toDegrees(perspectivePointsFromEstimate[count].el), Color.WHITE);
                 }
             }
         }
     }
 
-/*    private void refreshCanvas() {
-        centroidDelta.set(visibleSensorsCentroid.az, visibleSensorsCentroid.el).sub(estimatedSensorsCentroid.az, estimatedSensorsCentroid.el);
 
-        canvasArea.rescaleWindow(outputScale);
-        canvasArea.recenterWindow(Math.toDegrees(perspectivePointsCentroid.az-centroidDelta.x), Math.toDegrees(perspectivePointsCentroid.el-centroidDelta.y) );
-        canvasArea.clearWindow();
-
-        // Fill in the estimated and actual bearings to the cluster center
-        canvasArea.circleAtScaled(Math.toDegrees(actualBearingFromBase.az-centroidDelta.x), Math.toDegrees(actualBearingFromBase.el-centroidDelta.y), Color.BLUE, 4);
-
-        canvasArea.circleAtScaled(Math.toDegrees(perspectivePointsCentroid.az-centroidDelta.x), Math.toDegrees(perspectivePointsCentroid.el-centroidDelta.y), Color.MAGENTA, 4);
-
-        canvasArea.circleAtScaled(Math.toDegrees(estimateBearingFromIcoSphere.az), Math.toDegrees(estimateBearingFromIcoSphere.el), Color.RED, 4);
-        canvasArea.circleAtScaled(Math.toDegrees(estimatedSensorsCentroid.az), Math.toDegrees(estimatedSensorsCentroid.el), Color.PINK, 4);
-
-        // Output actual sensor angles
-        for (int count = 0; count < CLUSTER_SIZE; count++) {
-            if (base1ToSensorVisible[count]) {
-                canvasArea.circleAtScaled(Math.toDegrees(visibleBaseToSensorSpherical[count].az-centroidDelta.x), Math.toDegrees(visibleBaseToSensorSpherical[count].el-centroidDelta.y), Color.WHITE, 4);
-                canvasArea.circleAtScaled(Math.toDegrees(clusterSensorEstimateSpherical[count].az), Math.toDegrees(clusterSensorEstimateSpherical[count].el), Color.YELLOW, 4);
-                if (perspectivePointsFromEstimate[count].r > 0.5d) {
-                    canvasArea.circleAtScaled(Math.toDegrees(perspectivePointsFromEstimate[count].az-centroidDelta.x), Math.toDegrees(perspectivePointsFromEstimate[count].el-centroidDelta.y), Color.GREEN, 4);
-                    canvasArea.lineBetweenScaled(Math.toDegrees(visibleBaseToSensorSpherical[count].az-centroidDelta.x), Math.toDegrees(visibleBaseToSensorSpherical[count].el-centroidDelta.y), Math.toDegrees(perspectivePointsFromEstimate[count].az-centroidDelta.x), Math.toDegrees(perspectivePointsFromEstimate[count].el-centroidDelta.y), Color.WHITE);
-                }
-            }
-        }
-    }
-*/
-    
     public void mouseEntered(MouseEvent e) {
         if ((false == appInitialised)&&frameInitialised) {
             appInitialised = true;
@@ -1070,4 +1146,39 @@ public class DynamicOutput extends JPanel
     {0.467353, -0.452587, -0.759438},
     {0.508744, -0.579205, -0.636947},
     {0.615326, -0.560263, -0.554509}};
+
+
+    static double[][] cnlohrHMDReadings = {
+    {0.0, 0.0},
+    {0.0, 0.0},
+    {0.0, 0.0},
+    {0.0, 0.0},
+    {0.0, 0.0},
+    {0.0, 0.0},
+    {0.0, 0.0},
+    {0.0, 0.0},
+    {81.84643427, 91.50531148},
+    {82.31771155, 91.63383504},
+    {81.4962762, 91.18193372},
+    {81.40893373, 91.61839361},
+    {81.56903293, 92.13439535},
+    {0.0, 0.0},
+    {0.0, 0.0},
+    {82.07521818, 92.15180248},
+    {0.0, 0.0},
+    {0.0, 0.0},
+    {0.0, 0.0},
+    {0.0, 0.0},
+    {0.0, 0.0},
+    {0.0, 0.0},
+    {0.0, 0.0},
+    {0.0, 0.0},
+    {0.0, 0.0},
+    {0.0, 0.0},
+    {0.0, 0.0},
+    {81.12127192, 89.29136365},
+    {0.0, 0.0},
+    {81.34157045, 90.20862003},
+    {81.99500414, 89.59022408},
+    {81.58244065, 89.82019964}};
 }

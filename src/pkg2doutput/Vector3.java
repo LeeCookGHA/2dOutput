@@ -40,8 +40,8 @@ public class Vector3 {
 		double cosAz = Math.cos(inSph.az);
 		double sinAz = Math.sin(inSph.az);
                 this.x = inSph.r*cosEl*cosAz;
-                this.y = inSph.r*sinAz*cosEl;
-                this.z = inSph.r*sinEl;
+                this.z = inSph.r*sinAz*cosEl;
+                this.y = inSph.r*sinEl;
 		return this;
 	}
 
